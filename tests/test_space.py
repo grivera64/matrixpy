@@ -375,6 +375,36 @@ async def test_broadcast__with_mixed_children_and_nested_room__expect_only_top_l
 
 
 @pytest.mark.asyncio
+async def test_broadcast__with_duplicate_children__expect_single_send(
+    space, matrix_space, client, mock_send_response
+):
+    room = MatrixRoom(room_id="!room:example.com", own_user_id="@bot:example.com")
+    room.name = "Room"
+    subspace = MatrixRoom(
+        room_id="!subspace:example.com", own_user_id="@bot:example.com"
+    )
+    subspace.name = "Sub Space"
+    subspace.room_type = "m.space"
+    subspace.children = {"!room:example.com"}
+    matrix_space.children = {"!room:example.com", "!subspace:example.com"}
+    client.rooms = {
+        "!room:example.com": room,
+        "!subspace:example.com": subspace,
+    }
+
+    results = await space.broadcast("Hello!", depth=2)
+
+    assert len(results) == 1
+    assert results[0].ok
+    assert results[0].room.room_id == "!room:example.com"
+    assert client.room_send.await_count == 1
+    sent_room_ids = {
+        call.kwargs["room_id"] for call in client.room_send.await_args_list
+    }
+    assert sent_room_ids == {"!room:example.com"}
+
+
+@pytest.mark.asyncio
 async def test_broadcast__with_depth_two__expect_message_to_nested_children(
     space, matrix_space, client, mock_send_response
 ):

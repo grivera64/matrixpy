@@ -443,6 +443,7 @@ class Bot(Registry):
         Supports text messages (with optional markdown formatting)
         and file uploads (including images, videos, and audio).
         If a space is provided, it is silently skipped.
+        Duplicate rooms are broadcasted to once.
 
         ## Example
 
@@ -462,7 +463,9 @@ class Bot(Registry):
         await bot.broadcast([room1, room2, ...], file=image)
         ```
         """
-        rooms = list(filter(lambda child: not isinstance(child, Space), rooms))
+        rooms = list(
+            dict.fromkeys(room for room in rooms if not isinstance(room, Space))
+        )
         async_send = [
             room.send(content, raw=raw, notice=notice, file=file) for room in rooms
         ]

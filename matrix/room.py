@@ -57,6 +57,14 @@ class Room:
                 f"'{type(self).__name__}' object has no attribute '{name}'"
             ) from None
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Room):
+            return NotImplemented
+        return self.room_id == other.room_id
+
+    def __hash__(self) -> int:
+        return hash(self.room_id)
+
     @property
     def matrix_room(self) -> MatrixRoom:
         """Access to underlying MatrixRoom object."""

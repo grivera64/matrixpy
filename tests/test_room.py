@@ -568,3 +568,25 @@ def test_room_duplicate_room_type__expect_value_error():
 
         class DuplicateSpace(Room, room_type="m.space"):
             pass
+
+
+def test_room_equality__with_same_room_id__expect_equal(room, matrix_room, client):
+    other = Room(matrix_room, client)
+
+    assert room == other
+    assert hash(room) == hash(other)
+    assert len({room, other}) == 1
+
+
+def test_room_equality__with_different_room_id__expect_not_equal(room, client):
+    other_matrix_room = Mock(spec=MatrixRoom)
+    other_matrix_room.room_id = "!other:example.com"
+
+    other = Room(other_matrix_room, client)
+
+    assert room != other
+    assert len({room, other}) == 2
+
+
+def test_room_equality__with_non_room__expect_not_equal(room):
+    assert room != "!room:example.com"

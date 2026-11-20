@@ -67,6 +67,7 @@ class Space(Room, room_type="m.space"):
         Children the bot has not joined are silently omitted. Use `depth` to
         recursively broadcast to children of sub-spaces. `depth=1` broadcasts
         to direct children only (default).
+        Duplicate rooms are broadcasted to once.
 
         ## Example
 
@@ -90,8 +91,10 @@ class Space(Room, room_type="m.space"):
         ```
         """
         rooms = list(
-            filter(
-                lambda room: not isinstance(room, Space), self.get_children(depth=depth)
+            dict.fromkeys(
+                room
+                for room in self.get_children(depth=depth)
+                if not isinstance(room, Space)
             )
         )
         async_send = [

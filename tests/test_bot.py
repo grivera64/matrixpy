@@ -1048,6 +1048,22 @@ async def test_broadcast__with_space_in_list__expect_space_skipped(
 
 
 @pytest.mark.asyncio
+async def test_broadcast__with_duplicate_rooms__expect_single_send(
+    bot, make_room, mock_send_response
+):
+    room1 = make_room("!room1:example.com")
+
+    results = await bot.broadcast([room1, room1], "Hello!")
+
+    assert len(results) == 1
+    assert bot._client.room_send.await_count == 1
+    sent_room_ids = {
+        call.kwargs["room_id"] for call in bot._client.room_send.await_args_list
+    }
+    assert sent_room_ids == {"!room1:example.com"}
+
+
+@pytest.mark.asyncio
 async def test_broadcast_raw__expect_unformatted_messages(
     bot, make_room, mock_send_response
 ):
