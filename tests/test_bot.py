@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from nio import MatrixRoom, RoomMessageText, LoginError, Event
 
 from matrix import Bot, Config, Extension, Room, Space
-from matrix.message import Message
+from matrix.broadcast_result import BroadcastResult
 from matrix.types import File
 from matrix.errors import (
     CheckError,
@@ -1014,7 +1014,8 @@ async def test_broadcast__expect_message_sent_to_all_rooms(
     results = await bot.broadcast([room1, room2], "Hello!")
 
     assert len(results) == 2
-    assert all(isinstance(msg, Message) for msg in results)
+    assert all(isinstance(result, BroadcastResult) and result.ok for result in results)
+    assert all(result.message is not None for result in results)
     assert bot._client.room_send.await_count == 2
 
 
@@ -1061,6 +1062,40 @@ async def test_broadcast__with_duplicate_rooms__expect_single_send(
         call.kwargs["room_id"] for call in bot._client.room_send.await_args_list
     }
     assert sent_room_ids == {"!room1:example.com"}
+
+
+@pytest.mark.asyncio
+async def test_broadcast__with_send_failure__expect_error_result(
+    bot, make_room, mock_send_response
+):
+    room1 = make_room("!room1:example.com")
+    room2 = make_room("!room2:example.com")
+
+    async def room_send_side_effect(*args, **kwargs):
+        if kwargs.get("room_id") == "!room1:example.com":
+            raise MatrixError("send failed")
+        send_response = Mock()
+        send_response.event_id = "$event123"
+        return send_response
+
+    bot._client.room_send = AsyncMock(side_effect=room_send_side_effect)
+
+    results = await bot.broadcast([room1, room2], "Hello!")
+
+    assert len(results) == 2
+    failed = next(
+        result for result in results if result.room.room_id == "!room1:example.com"
+    )
+    succeeded = next(
+        result for result in results if result.room.room_id == "!room2:example.com"
+    )
+    assert not failed.ok
+    assert failed.message is None
+    assert isinstance(failed.error, MatrixError)
+    assert succeeded.ok
+    assert succeeded.error is None
+    assert succeeded.message is not None
+    assert bot._client.room_send.await_count == 2
 
 
 @pytest.mark.asyncio

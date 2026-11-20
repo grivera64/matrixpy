@@ -5,9 +5,9 @@ import logging
 
 from typing import Optional, Any
 
+from matrix.broadcast_result import BroadcastResult
 from nio import AsyncClient, Event, MatrixRoom
 
-from matrix.message import Message
 from matrix.types import File
 
 from .room import Room, make_room
@@ -431,13 +431,13 @@ class Bot(Registry):
 
     async def broadcast(
         self,
-        rooms: list[Room],
+        rooms: list[Room | Space],
         content: str | None = None,
         *,
         raw: bool = False,
         notice: bool = False,
         file: File | None = None,
-    ) -> list[Message]:
+    ) -> list[BroadcastResult]:
         """Broadcasts a message to the specified rooms.
 
         Supports text messages (with optional markdown formatting)
@@ -469,4 +469,12 @@ class Bot(Registry):
         async_send = [
             room.send(content, raw=raw, notice=notice, file=file) for room in rooms
         ]
-        return await asyncio.gather(*async_send)
+        results = await asyncio.gather(*async_send, return_exceptions=True)
+        return [
+            (
+                BroadcastResult(result.room, result, None)
+                if not isinstance(result, BaseException)
+                else BroadcastResult(room, None, result)
+            )
+            for result, room in zip(results, rooms)
+        ]
