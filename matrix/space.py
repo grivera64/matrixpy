@@ -1,6 +1,7 @@
 from typing import Self
 import asyncio
 
+from matrix.broadcast_result import BroadcastResult
 from matrix.message import Message
 from matrix.room import Room, make_room
 
@@ -57,7 +58,7 @@ class Space(Room, room_type="m.space"):
         notice: bool = False,
         file: File | None = None,
         depth: int = 1,
-    ) -> list[Message]:
+    ) -> list[BroadcastResult]:
         """Broadcasts a message to all rooms in this space.
 
         Supports text messages (with optional markdown formatting)
@@ -88,10 +89,20 @@ class Space(Room, room_type="m.space"):
         await space.broadcast("New Announcement", notice=True, depth=2)
         ```
         """
-        rooms = filter(
-            lambda room: not isinstance(room, Space), self.get_children(depth=depth)
+        rooms = list(
+            filter(
+                lambda room: not isinstance(room, Space), self.get_children(depth=depth)
+            )
         )
         async_send = [
             room.send(content, raw=raw, notice=notice, file=file) for room in rooms
         ]
-        return await asyncio.gather(*async_send)
+        results = await asyncio.gather(*async_send, return_exceptions=True)
+        return [
+            (
+                BroadcastResult(result.room, result, None)
+                if not isinstance(result, BaseException)
+                else BroadcastResult(room, None, result)
+            )
+            for result, room in zip(results, rooms)
+        ]

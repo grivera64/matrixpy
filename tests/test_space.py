@@ -1,9 +1,10 @@
 import pytest
 from unittest.mock import AsyncMock, Mock, MagicMock
 from nio import MatrixRoom, Event
+from matrix.broadcast_result import BroadcastResult
+from matrix.errors import MatrixError
 from matrix.room import Room
 from matrix.space import Space
-from matrix.message import Message
 
 
 @pytest.fixture
@@ -186,7 +187,8 @@ async def test_broadcast__expect_message_sent_to_all_children(
     results = await space.broadcast("Hello!")
 
     assert len(results) == 2
-    assert all(isinstance(msg, Message) for msg in results)
+    assert all(isinstance(result, BroadcastResult) and result.ok for result in results)
+    assert all(result.message is not None for result in results)
     assert client.room_send.await_count == 2
 
 
@@ -214,6 +216,47 @@ async def test_broadcast__with_unjoined_children__expect_empty_list(
 
     assert results == []
     client.room_send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_broadcast__with_send_failure__expect_error_result(
+    space, matrix_space, client, mock_send_response
+):
+    child1 = MatrixRoom(room_id="!child1:example.com", own_user_id="@bot:example.com")
+    child1.name = "Child 1"
+    child2 = MatrixRoom(room_id="!child2:example.com", own_user_id="@bot:example.com")
+    child2.name = "Child 2"
+    matrix_space.children = {"!child1:example.com", "!child2:example.com"}
+    client.rooms = {
+        "!child1:example.com": child1,
+        "!child2:example.com": child2,
+    }
+
+    async def room_send_side_effect(*args, **kwargs):
+        if kwargs.get("room_id") == "!child1:example.com":
+            raise MatrixError("send failed")
+        send_response = Mock()
+        send_response.event_id = "$event123"
+        return send_response
+
+    client.room_send = AsyncMock(side_effect=room_send_side_effect)
+
+    results = await space.broadcast("Hello!")
+
+    assert len(results) == 2
+    failed = next(
+        result for result in results if result.room.room_id == "!child1:example.com"
+    )
+    succeeded = next(
+        result for result in results if result.room.room_id == "!child2:example.com"
+    )
+    assert not failed.ok
+    assert failed.message is None
+    assert isinstance(failed.error, MatrixError)
+    assert succeeded.ok
+    assert succeeded.error is None
+    assert succeeded.message is not None
+    assert client.room_send.await_count == 2
 
 
 @pytest.mark.asyncio
